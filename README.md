@@ -44,15 +44,18 @@ npm start              # 起服务(默认 :8787;缺 DEEPSEEK_KEY 时仅 AI 解�
 
 ## 服务器部署（Docker · 本地 SSH 上传）
 
+**已在阿里云落地**：`root@101.133.134.164:/opt/get-fortune`（Docker 单容器，`0.0.0.0:8787->8787`）。
+本机 `deploy/server.env`（gitignored）已填好该目标，改完代码只需跑 `bash deploy/deploy.sh`。
+
 **准备（一次）**
 
 ```bash
-# ① 服务器装 Docker（阿里云镜像源 + 镜像加速）
-ssh admin@你的IP 'bash -s' < deploy/install-docker.sh
+# ① 服务器装 Docker（本机已有:29.8.1 + compose v5.5.1,含 daocloud/1ms.run 镜像加速）
+ssh root@你的IP 'bash -s' < deploy/install-docker.sh
 
-# ② 本地填两份配置（都不进仓库）
-cp deploy/server.env.example deploy/server.env   # 填 SSH_TARGET / REMOTE_DIR
-cp .env.example .env                             # 填 DEEPSEEK_KEY
+# ② 本地填部署目标（gitignored）
+cp deploy/server.env.example deploy/server.env   # SSH_TARGET / REMOTE_DIR
+#    服务器上的 .env 放 DEEPSEEK_KEY(首次部署已写入 /opt/get-fortune/.env,chmod 600)
 
 # ③ 阿里云控制台放行端口：ECS → 安全组 → 入方向 → 8787（参考量化看板的 8000 规则）
 ```
@@ -62,6 +65,7 @@ cp .env.example .env                             # 填 DEEPSEEK_KEY
 ```bash
 bash deploy/deploy.sh          # 构建 → 上传 → docker compose 重建 → 探活
 bash deploy/deploy.sh --logs   # 看服务器日志
+npm run test:prod              # 打真实地址验收(真浏览器 + 真 DeepSeek;需能访问到该地址)
 ```
 
 浏览器打开 `http://你的IP:8787` 即可。站是 HTTP 明文（浏览器可能提示「不安全」），

@@ -1,9 +1,13 @@
-// fortune-server — Cloudflare Worker 的自托管镜像(node:http,打包后零 npm 运行时依赖)
-// 行为与 cloudflare-worker 完全一致: 校验/限流/CORS/SSE 复用 worker 同一份实现,排盘仍在前端。
-// POST /api/fortune  校验入参 → 每 IP 限流 → 组装 prompt → 转发 DeepSeek 流式回复
-// GET  /healthz      探活(不限流)
-// 环境变量: PORT(默认 8787) | DEEPSEEK_KEY(必填) | FORTUNE_UPSTREAM(默认官方地址,测试可指向 mock)
+// server — 命理小馆独立站服务(node:http,打包后零 npm 运行时依赖)
+// 一个进程同时托管两件事:
+//   ① 静态站: / → web/dist/index.html,含 app.js/app.css/data/*(排盘 100% 在浏览器里跑)
+//   ② AI 接口: POST /api/fortune → 校验/限流/拼 prompt → 转发 DeepSeek 流式(SSE)
+//   另有 GET /healthz 探活。与 worker/index.ts 共用同一份校验/限流/CORS/SSE 实现。
+// 环境变量: PORT(默认 8787) | DEEPSEEK_KEY(必填) | STATIC_DIR(默认 ../web/dist) | FORTUNE_UPSTREAM
 import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { cors, rateLimited, sse, validate } from "../worker/index";
 import { SYSTEM_PROMPT, buildUserPrompt } from "./prompts";
@@ -12,6 +16,40 @@ const PORT = Number(process.env.PORT ?? 8787);
 const UPSTREAM = process.env.FORTUNE_UPSTREAM ?? "https://api.deepseek.com/chat/completions";
 const KEY = process.env.DEEPSEEK_KEY ?? "";
 const MAX_BODY = 256 * 1024;
+const STATIC_DIR = path.resolve(process.env.STATIC_DIR ?? fileURLToPath(new URL("../web/dist", import.meta.url)));
+
+const MIME: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+  ".woff2": "font/woff2",
+};
+
+/** 静态文件: 只读 STATIC_DIR 内的文件,拒绝路径穿越;HTML 不缓存(便于改文案),其余短缓存 */
+function serveStatic(pathname: string, res: ServerResponse) {
+  const rel = decodeURIComponent(pathname === "/" ? "/index.html" : pathname);
+  const file = path.join(STATIC_DIR, rel);
+  if (!file.startsWith(STATIC_DIR + path.sep) && file !== path.join(STATIC_DIR, "index.html")) {
+    res.writeHead(403, { "content-type": "text/plain; charset=utf-8" });
+    return res.end("403");
+  }
+  fs.readFile(file, (err, data) => {
+    if (err) {
+      res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+      return res.end("404 Not Found");
+    }
+    const ext = path.extname(file).toLowerCase();
+    res.writeHead(200, {
+      "content-type": MIME[ext] ?? "application/octet-stream",
+      "cache-control": ext === ".html" ? "no-cache" : "public, max-age=300",
+    });
+    res.end(data);
+  });
+}
 
 function json(res: ServerResponse, status: number, obj: unknown, origin: string | null) {
   res.writeHead(status, { ...cors(origin), "content-type": "application/json; charset=utf-8" });
@@ -42,10 +80,15 @@ const server = http.createServer(async (req, res) => {
   }
 
   const url = req.url ?? "/";
-  if (req.method === "GET" && url.startsWith("/healthz")) {
-    return json(res, 200, { ok: true }, origin);
+  const pathname = url.split("?")[0];
+  if (req.method === "GET" && pathname === "/healthz") {
+    return json(res, 200, { ok: true, staticDir: STATIC_DIR }, origin);
   }
-  if (req.method !== "POST" || !url.startsWith("/api/fortune")) {
+  if (!pathname.startsWith("/api/fortune")) {
+    if (req.method === "GET" || req.method === "HEAD") return serveStatic(pathname, res);
+    return json(res, 405, { error: "不支持的请求方法" }, origin);
+  }
+  if (req.method !== "POST") {
     return json(res, 405, { error: "仅支持 POST /api/fortune" }, origin);
   }
 
@@ -134,5 +177,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`fortune-server listening on :${PORT} (upstream: ${UPSTREAM})`);
+  console.log(`命理小馆 listening on :${PORT}`);
+  console.log(`  静态目录: ${STATIC_DIR}`);
+  console.log(`  AI 上游:  ${UPSTREAM}${KEY ? "" : "  ⚠ 未配置 DEEPSEEK_KEY,AI 解读将返回 503"}`);
 });

@@ -1,0 +1,9 @@
+node_modules
+.git
+.tmp
+.shots
+worker
+src
+test
+tools
+README.md

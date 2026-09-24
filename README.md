@@ -1,89 +1,91 @@
-# My-Fortune — 算命 AI 解读转发服务
+# Get-Fortune · 命理小馆
 
-[MyBlog 命理小馆](https://github.com/zmdld11/zmdld11.github.io)的后端：排盘 100% 在访客浏览器本地完成，本服务只做「校验入参 → 每 IP 限流 → 拼 prompt → 流式转发 DeepSeek」，**不做任何命理计算、不存储任何数据**。DeepSeek key 只存服务端环境变量，绝不入库、不进前端。
+一个自托管的算命/占卜独立站：**全部排盘在访客浏览器本地算**（星盘、八字、紫微、六爻、塔罗……28 个模块，纯离线可用），
+DeepSeek 只负责把算好的盘面翻译成人话。前端「星夜玄机」暗色主题，28 个模块带悬浮解释浮窗。
 
-同一份代码、两个部署目标：
+线上地址：<http://101.133.134.164:8787>（阿里云 2C2G，Docker 单容器）
 
-| 目标 | 代码 | 大陆可达性 | 状态 |
-|---|---|---|---|
-| **Node 自托管**（阿里云，本仓库主目标） | `src/server.ts` → 打包 `dist/server.mjs` | ✓ | 待部署 |
-| **Cloudflare Worker**（备用） | `worker/index.ts` | ✗（workers.dev 被 DNS 污染） | 已上线 `https://zmdld11-fortune.zmdld11.workers.dev/api/fortune` |
+```
+浏览器 ──http://IP:8787──▶ Docker 容器(单进程 node)
+                            ├─ 静态站：/ · app.js · app.css · data/*
+                            ├─ POST /api/fortune → DeepSeek 流式(SSE)   ← 只有 AI 解读走网络
+                            └─ GET  /healthz
+```
 
-两边行为逐字一致：`src/server.ts` 复用 `worker/index.ts` 导出的校验/CORS/限流/SSE 实现，prompt 规则共用 `src/prompts.ts`。
+- 排盘零成本零依赖：`src/paipan/` 是纯 TypeScript 移植（含 102 项天象/历法锚点自测），不调任何 API
+- key 只在服务器 `.env`（chmod 600），不进仓库、不进镜像、不进前端
+
+## 目录
+
+```
+src/paipan/      排盘库(28 模块注册表 + 星历/历法/占卜/紫微/塔罗/五格 + selftest)
+                  └ data/kangxi.json  康熙笔画全量表(233KB,前端懒加载)
+src/prompts.ts   DeepSeek 系统规则/模块锚点/输出模板(与 worker 共用)
+src/server.ts    node:http 服务:静态托管 + /api/fortune 转发 + /healthz
+web/             独立站前端(无框架):index.html · app.ts · style.css · favicon.svg · data/config.json
+worker/          Cloudflare Worker 备用目标(同一份校验/限流/CORS 代码,境外 HTTPS 可用)
+test/            server 冒烟(23 项) · 端到端(37 项) · mock DeepSeek · 全模块冒烟
+tools/           build-web.mjs(前端打包) · gen-kangxi.mjs(字表生成) · compare-paipan.ts
+deploy/          Dockerfile · docker-compose · deploy.sh(一键发布) · install-docker.sh · systemd 兜底
+```
 
 ## 开发
 
 ```bash
-npm install        # 仅 esbuild 一个 devDep
-npm test           # 打包 + 14 项全路径冒烟(自动起 mock DeepSeek 上游)
-npm run build      # 产物 dist/server.mjs(单文件,入库——服务器 git pull 即用,无需 npm)
+npm install
+npm run build          # 前端 → web/dist,服务端 → dist/server.mjs
+npm test               # 构建 + 排盘 102 锚点 + 服务端 23 项冒烟
+npm run test:e2e       # 构建 + 起 mock 上游 + Edge 无头跑完整交互(37 项,含浮窗三通道)
+npm start              # 起服务(默认 :8787;缺 DEEPSEEK_KEY 时仅 AI 解读不可用)
 ```
 
-接口契约（前端 `fetch(cfg.api)` 直连）：
+前端改动只碰 `web/`：`app.ts` 管逻辑、`style.css` 管「星夜玄机」主题、`index.html` 管骨架与文案。
+模块文案（悬浮浮窗的白话解释）在 `src/paipan/descs.ts`，改完重新 build 即可。
 
-```
-POST /api/fortune   body: {modules:[{id,name}], sections, question?, focus?}
-                    返回 SSE 事件流: {t:"chunk",v} | {t:"error",v} | data: [DONE]
-GET  /healthz       {"ok":true}（不限流，探活用）
-```
+## 服务器部署（Docker · 本地 SSH 上传）
 
-环境变量：`PORT`（默认 8787）、`DEEPSEEK_KEY`（必填）、`FORTUNE_UPSTREAM`（默认官方地址，测试可指向 mock）。
-
-安全设计：CORS 白名单（仅博客域名 + localhost）；每 IP 10 分钟 5 次滑动窗口限流；入参结构与体量双重校验（防烧 token）；请求体上限 256KB。
-
-## 服务器部署（阿里云 2C2G Ubuntu，沿用量化项目模式）
+**准备（一次）**
 
 ```bash
-# ① 服务器装 Node(一次)：Ubuntu 22.04 自带 node 太老,用 NodeSource
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs
+# ① 服务器装 Docker（阿里云镜像源 + 镜像加速）
+ssh admin@你的IP 'bash -s' < deploy/install-docker.sh
 
-# ② 拉代码
-cd /home/admin && git clone https://github.com/zmdld11/My-Fortune.git
+# ② 本地填两份配置（都不进仓库）
+cp deploy/server.env.example deploy/server.env   # 填 SSH_TARGET / REMOTE_DIR
+cp .env.example .env                             # 填 DEEPSEEK_KEY
 
-# ③ 配 key（不进 git）
-cd My-Fortune
-echo 'DEEPSEEK_KEY=sk-你的key' > .env && chmod 600 .env
-
-# ④ systemd 常驻（unit 文件在 deploy/fortune.service，已按 quant.service 模式写好）
-sudo cp deploy/fortune.service /etc/systemd/system/
-sudo systemctl daemon-reload && sudo systemctl enable --now fortune-server
-curl -s http://127.0.0.1:8787/healthz    # {"ok":true}
-
-# 以后升级 = 拉代码 + 重启
-git pull && sudo systemctl restart fortune-server
+# ③ 阿里云控制台放行端口：ECS → 安全组 → 入方向 → 8787（参考量化看板的 8000 规则）
 ```
 
-### HTTPS（硬约束）
-
-博客页面是 HTTPS，浏览器禁止 HTTPS 页面调 HTTP 接口（mixed content），所以对外**必须 HTTPS**。三选一（按是否买域名）：
-
-- **A. 有域名**：nginx 反代 `dist/server.mjs`（127.0.0.1:8787），大陆已备案域名走 443；未备案走 DNS-01 证书 + 非标端口（如 8443）。nginx 配置两个 SSE 关键点：`proxy_buffering off;`（否则不逐字）+ `proxy_read_timeout 300s;`
-- **B. 没域名**：Let's Encrypt 已支持给裸 IP 签短期证书（6 天有效，acme.sh 自动续期），可行但多一套续期机制要维护
-- **C. 都不动**：继续用 Cloudflare Worker 作 HTTPS 入口（境内无代理访客不可用），自托管版仅作内网/直连用
-
-### nginx 反代参考（情形 A）
-
-```nginx
-location /api/fortune {
-    proxy_pass http://127.0.0.1:8787;
-    proxy_http_version 1.1;
-    proxy_set_header Connection "";
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;  # 限流按真实 IP
-    proxy_buffering off;
-    proxy_read_timeout 300s;
-}
-```
-
-## Cloudflare Worker 备用目标
+**发布（每次改完代码）**
 
 ```bash
-cd worker
-npx wrangler login
-npx wrangler secret put DEEPSEEK_KEY
-npx wrangler deploy        # wrangler.toml 已就位
+bash deploy/deploy.sh          # 构建 → 上传 → docker compose 重建 → 探活
+bash deploy/deploy.sh --logs   # 看服务器日志
 ```
 
-## 相关
+浏览器打开 `http://你的IP:8787` 即可。站是 HTTP 明文（浏览器可能提示「不安全」），
+但整站跑在 `IP:端口` 上、页面与接口同源，不存在混合内容问题；非 80/443 端口也不需要备案。
 
-- 前端（排盘 TS 库 + 交互页）在博客仓库 `src/scripts/fortune/` 与 `src/pages/fortune.astro`，开发记录见博客仓库 issue #13
-- 算命方法论 skill：`~/.agents/skills/fortune-calc`
+**不想用 Docker**：`deploy/get-fortune.service` 是同款 systemd 兜底（`sudo cp` 后 `systemctl enable --now get-fortune`）。
+
+## 接口契约
+
+```
+POST /api/fortune   { modules:[{id,name}], sections, question?, focus? }
+                    → SSE: {t:"chunk",v} … {t:"error",v} … data: [DONE]
+GET  /healthz       {"ok":true,"staticDir":"…"}
+```
+
+安全：CORS 白名单（本站 + 本地 dev）；每 IP 10 分钟 5 次滑动窗口限流；入参结构与体量双重校验（防烧 token）；请求体上限 256KB；
+静态服务拒绝路径穿越；同源部署下浏览器不跨域。
+
+## 与 MyBlog 的关系
+
+排盘库与前端原在博客仓库（issue #13）开发，2026-09 迁移为本独立站；博客首页只保留一张外链卡片指向本站。
+Cloudflare Worker（`worker/`）作为境外 HTTPS 备用入口保留，`worker/` 与 `src/server.ts` 共用同一份校验/限流/CORS/SSE 实现与 prompt 规则。
+
+## 免责声明
+
+天文与历法计算真实可复核；但「星盘/八字 → 性格与命运」属于传统解释系统，没有科学证据支持。
+本项目仅供娱乐参考，不提供医疗、投资、重大决策建议。

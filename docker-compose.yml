@@ -1,0 +1,19 @@
+# 命理小馆 —— 单容器跑完整站(静态页 + AI 转发接口)
+# 用法(在项目根目录):
+#   docker compose up -d --build      启动/重建
+#   docker compose logs -f fortune    看日志
+#   docker compose down               停掉
+services:
+  fortune:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+    image: get-fortune:latest
+    container_name: get-fortune
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: 8787
+    ports:
+      # 宿主机端口可改: .env 里写 FORTUNE_PORT=xxxx
+      - "${FORTUNE_PORT:-8787}:8787"

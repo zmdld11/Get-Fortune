@@ -1,0 +1,21 @@
+# 兜底方案: 不想用 Docker 时,用 systemd 直接跑同一份 server.mjs(与量化项目 quant.service 同款)
+#   sudo cp deploy/get-fortune.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now get-fortune
+# 需要: Node >= 18 已装(apt install nodejs 或 NodeSource),且 /home/admin/Get-Fortune/.env 内有 DEEPSEEK_KEY
+[Unit]
+Description=Get Fortune (命理小馆) — 静态站 + AI 转发
+After=network.target
+
+[Service]
+Type=simple
+User=admin
+WorkingDirectory=/home/admin/Get-Fortune
+ExecStart=/usr/bin/node /home/admin/Get-Fortune/dist/server.mjs
+EnvironmentFile=/home/admin/Get-Fortune/.env
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>命理小馆 · 本地精确排盘</title>
+  <meta name="description" content="星盘 / 八字 / 紫微 / 六爻 / 塔罗——浏览器本地精确排盘，AI 只负责把盘面翻译成人话。" />
+  <meta name="color-scheme" content="dark" />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+  <!-- 星夜背景：两层星点缓慢闪烁 + 顶部星云光晕（纯 CSS，不加载图片） -->
+  <div class="sky" aria-hidden="true">
+    <div class="stars stars-a"></div>
+    <div class="stars stars-b"></div>
+    <div class="glow"></div>
+  </div>
+
+  <main class="wrap">
+    <header class="head">
+      <p class="sigil" aria-hidden="true">✦ &#8202; ☾ &#8202; ✦</p>
+      <h1 class="title">命理小馆</h1>
+      <p class="sub">本地精确排盘 · AI 只负责把盘面翻译成人话</p>
+      <p class="intro">勾选想算的模块 → 填信息 → 浏览器本地完成全部计算（不联网、不存储）→ 可选让 AI 基于算好的盘面写解读。</p>
+      <p class="note">⚠ 天文与历法计算真实可复核；但「星盘/八字→性格与命运」属于传统解释系统，没有科学证据支持。本页仅供娱乐参考，升学、就业、婚恋、投资请按现实信息决策；不提供医疗、投资、重大决策建议。</p>
+      <p class="note">🔒 出生信息只在你浏览器里用于本次计算；点「AI 解读」时，算好的盘面结果会经本站接口转发给 DeepSeek 生成解读，本站与第三方均不落盘存储。</p>
+    </header>
+
+    <!-- ① 模块勾选（28 个模块由 app.js 依注册表渲染；悬停/聚焦/点 ⓘ 出解释浮窗） -->
+    <section class="card">
+      <h2 class="card-head">① 想算什么？<small>可多选 · 悬停看每项是什么</small></h2>
+      <div id="f-cats"></div>
+    </section>
+
+    <!-- ② 动态表单区：字段按勾选出现 -->
+    <section class="card" id="f-form">
+      <h2 class="card-head">② 填信息<small>按勾选动态出现</small></h2>
+
+      <fieldset class="f-fieldset" id="fs-birth" hidden>
+        <legend>出生信息（本人）</legend>
+        <div class="f-row">
+          <label class="f-inline">历法
+            <select id="f-cal">
+              <option value="solar" selected>阳历</option>
+              <option value="lunar">农历</option>
+            </select>
+          </label>
+          <span class="f-dates" id="f-dates-solar">
+            <input type="date" id="f-date" min="1900-02-08" max="2030-12-31" />
+          </span>
+          <span class="f-dates" id="f-dates-lunar" hidden>
+            <input type="number" id="f-lunar-year" placeholder="农历年份" min="1900" max="2030" />
+            <select id="f-lunar-month"></select>
+            <select id="f-lunar-day"></select>
+            <label class="f-inline"><input type="checkbox" id="f-lunar-leap" /> 闰月</label>
+          </span>
+        </div>
+        <div class="f-row">
+          <label class="f-inline"><input type="checkbox" id="f-time-known" checked /> 知道出生时间</label>
+          <input type="time" id="f-time" value="12:00" />
+          <label class="f-inline">时间来源
+            <select id="f-time-source">
+              <option value="record">医院记录/出生证</option>
+              <option value="recall">家长口述</option>
+              <option value="rough">大概估计</option>
+            </select>
+          </label>
+        </div>
+        <div class="f-row" id="f-dst-row" hidden>
+          <label class="f-inline"><input type="checkbox" id="f-dst" /> 出生在 1986–1991 夏季夏令时（钟表时间 −1h，已按日期自动勾选，可改）</label>
+        </div>
+        <div class="f-row">
+          <label class="f-inline">出生地
+            <select id="f-city"></select>
+          </label>
+          <span id="f-custom-geo" hidden>
+            <input type="number" id="f-lon" step="0.01" min="-180" max="180" placeholder="东经 121.47" />
+            <input type="number" id="f-lat" step="0.01" min="-90" max="90" placeholder="北纬 31.23" />
+            <input type="number" id="f-tz" step="0.5" min="-12" max="14" value="8" placeholder="时区 ±h" />
+          </span>
+        </div>
+        <div class="f-row">
+          <label class="f-inline"><input type="radio" name="f-gender" value="male" checked /> 男</label>
+          <label class="f-inline"><input type="radio" name="f-gender" value="female" /> 女</label>
+          <label class="f-inline"><input type="radio" name="f-gender" value="unknown" /> 不愿透露<small>（大运两套都给）</small></label>
+          <label class="f-inline">关注领域
+            <select id="f-focus">
+              <option value="">（不指定）</option>
+              <option>学业</option>
+              <option>事业财运</option>
+              <option>感情婚姻</option>
+              <option>健康</option>
+              <option>流年运势</option>
+            </select>
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset class="f-fieldset" id="fs-partner" hidden>
+        <legend>对方出生信息（合盘需要）</legend>
+        <div class="f-row">
+          <span class="f-dates"><input type="date" id="p-date" min="1900-02-08" max="2030-12-31" /></span>
+          <input type="time" id="p-time" value="12:00" />
+          <label class="f-inline"><input type="checkbox" id="p-dst" /> 对方夏令时</label>
+        </div>
+        <div class="f-row">
+          <label class="f-inline">出生地
+            <select id="p-city"></select>
+          </label>
+          <label class="f-inline"><input type="radio" name="p-gender" value="male" /> 男</label>
+          <label class="f-inline"><input type="radio" name="p-gender" value="female" checked /> 女</label>
+        </div>
+      </fieldset>
+
+      <fieldset class="f-fieldset" id="fs-period" hidden>
+        <legend>想看哪段时间的运？（推运类）</legend>
+        <input type="date" id="f-period-from" />
+        <span class="f-dim">至</span>
+        <input type="date" id="f-period-to" />
+      </fieldset>
+
+      <fieldset class="f-fieldset" id="fs-question" hidden>
+        <legend>你想问什么？（占卜/解读都靠它）</legend>
+        <textarea id="f-question" rows="2" maxlength="200" placeholder="例：最近该不该换工作？和 TA 适不适合走下去？"></textarea>
+        <div class="f-row" id="f-toss-box" hidden>
+          <button type="button" class="btn btn-ghost" id="f-toss-btn">🪙 摇一摇（六爻，摇 6 次）</button>
+          <button type="button" class="btn btn-ghost" id="f-toss-reset" hidden>重新摇</button>
+          <span class="f-toss-result" id="f-toss-result">未摇铜钱 → 将按当前时间起卦（非正统，信息量打折）</span>
+        </div>
+        <div class="f-row" id="f-spread-box" hidden>
+          <label class="f-inline">塔罗牌阵
+            <select id="f-spread">
+              <option value="three">三张（过去/现在/走向）</option>
+              <option value="single">单张</option>
+              <option value="celtic">凯尔特十字（10 张）</option>
+            </select>
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset class="f-fieldset" id="fs-name" hidden>
+        <legend>姓名（五格评分）</legend>
+        <input type="text" id="f-surname" maxlength="4" placeholder="姓" />
+        <input type="text" id="f-given" maxlength="4" placeholder="名" />
+      </fieldset>
+
+      <fieldset class="f-fieldset" id="fs-zeday" hidden>
+        <legend>择日范围与事项</legend>
+        <input type="date" id="f-zeday-from" />
+        <span class="f-dim">至</span>
+        <input type="date" id="f-zeday-to" />
+        <input type="text" id="f-zeday-event" maxlength="20" placeholder="事项：搬家/开业/领证…" />
+      </fieldset>
+
+      <div class="f-actions">
+        <button type="button" class="btn btn-main" id="f-run" disabled>🧮 本地排盘</button>
+        <button type="button" class="btn btn-ai" id="f-ai" hidden>✨ 排盘 + AI 解读</button>
+      </div>
+      <p class="f-hint" id="f-hint">先勾选至少一个模块</p>
+    </section>
+
+    <!-- ③ 结果区 -->
+    <section id="f-result" aria-live="polite"></section>
+    <section class="card" id="f-ai-card" hidden>
+      <h2 class="card-head">AI 解读 <span class="f-ai-note">（流式生成中…）</span></h2>
+      <div class="f-ai-text" id="f-ai-text"></div>
+    </section>
+
+    <footer class="foot">
+      盘面计算全部在浏览器本地完成（含天象锚点自测）；解读口径与免责声明见页面顶部。
+    </footer>
+  </main>
+
+  <!-- 悬浮解释浮窗：28 个模块共用一个节点 -->
+  <div id="tip" role="tooltip" hidden></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

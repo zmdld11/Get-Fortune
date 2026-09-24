@@ -29,15 +29,40 @@ await new Promise((r) => setTimeout(r, 1200));
 try {
   // 1. healthz
   let r = await fetch(`${BASE}/healthz`);
-  ok("healthz 200", r.status === 200 && (await r.json()).ok === true);
+  const health = await r.json();
+  ok("healthz 200", r.status === 200 && health.ok === true);
+
+  // 1b. 静态站: 首页/JS/CSS/数据
+  r = await fetch(`${BASE}/`);
+  const html = await r.text();
+  ok("GET / 返回页面", r.status === 200 && html.includes("命理小馆") && html.includes("app.js"));
+  ok("HTML 不缓存", (r.headers.get("cache-control") ?? "").includes("no-cache"));
+  r = await fetch(`${BASE}/app.js`);
+  ok("GET /app.js 200 text/javascript", r.status === 200 && (r.headers.get("content-type") ?? "").includes("javascript"));
+  r = await fetch(`${BASE}/app.css`);
+  ok("GET /app.css 200 text/css", r.status === 200 && (r.headers.get("content-type") ?? "").includes("css"));
+  r = await fetch(`${BASE}/data/config.json`);
+  const cfgJson = await r.json();
+  ok("GET /data/config.json 含 26 城 + api", r.status === 200 && cfgJson.cities.length === 26 && cfgJson.api === "/api/fortune");
+  r = await fetch(`${BASE}/data/kangxi.json`);
+  const kx = await r.json();
+  ok("康熙表可访问且覆盖 2 万字+", r.status === 200 && Object.keys(kx).length > 20000, `实际 ${Object.keys(kx).length}`);
+
+  // 1c. 静态安全: 路径穿越与 404
+  r = await fetch(`${BASE}/../package.json`);
+  ok("路径穿越被拒", r.status === 403 || r.status === 404, `实际 ${r.status}`);
+  r = await fetch(`${BASE}/%2e%2e%2fpackage.json`);
+  ok("编码穿越被拒", r.status === 403 || r.status === 404, `实际 ${r.status}`);
+  r = await fetch(`${BASE}/nope.html`);
+  ok("不存在文件 404", r.status === 404);
 
   // 2. OPTIONS 预检
   r = await fetch(`${BASE}/api/fortune`, { method: "OPTIONS", headers: { origin: "https://zmdld11.github.io" } });
   ok("OPTIONS 204 + CORS 回显", r.status === 204 && r.headers.get("access-control-allow-origin") === "https://zmdld11.github.io");
 
-  // 3. GET → 405
+  // 3. GET /api/fortune → 405(不被静态服务吃掉)
   r = await fetch(`${BASE}/api/fortune`);
-  ok("GET 405", r.status === 405);
+  ok("GET /api/fortune 405", r.status === 405);
 
   // 4. 未知 Origin 不回 CORS 头
   r = await fetch(`${BASE}/api/fortune`, { method: "OPTIONS", headers: { origin: "https://evil.example.com" } });

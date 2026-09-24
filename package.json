@@ -1,15 +1,24 @@
 {
-  "name": "my-fortune",
+  "name": "get-fortune",
   "version": "0.1.0",
   "type": "module",
   "private": true,
-  "description": "MyBlog 算命组件的 AI 解读转发服务(node 自托管 + Cloudflare Worker 双目标)",
+  "description": "命理小馆独立站：浏览器本地精确排盘 + DeepSeek 流式解读（Node 自托管 / Cloudflare Worker 双部署目标）",
   "scripts": {
-    "build": "esbuild src/server.ts --bundle --platform=node --format=esm --outfile=dist/server.mjs --legal-comments=none",
-    "test": "npm run build && node test/test-server.mjs",
+    "build": "npm run build:web && npm run build:server",
+    "build:web": "node tools/build-web.mjs",
+    "build:server": "esbuild src/server.ts --bundle --platform=node --format=esm --outfile=dist/server.mjs --legal-comments=none",
+    "start": "node dist/server.mjs",
+    "dev": "npm run build && node dist/server.mjs",
+    "test": "npm run build && npm run test:paipan && node test/test-server.mjs",
+    "test:paipan": "tsx src/paipan/selftest.ts",
+    "test:e2e": "npm run build && node test/e2e.mjs",
     "deploy:worker": "cd worker && npx wrangler deploy"
   },
   "devDependencies": {
-    "esbuild": "^0.27.7"
+    "esbuild": "^0.27.7",
+    "opencc-js": "^1.4.2",
+    "puppeteer-core": "^25.12.0",
+    "tsx": "^4.23.15"
   }
 }

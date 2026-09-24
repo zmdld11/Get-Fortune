@@ -1,0 +1,10 @@
+name = "zmdld11-fortune"
+main = "index.ts"
+compatibility_date = "2026-09-01"
+
+# 部署(需要你自己的 Cloudflare 账号,见 README.md):
+#   npx wrangler login
+#   npx wrangler secret put DEEPSEEK_KEY     # 粘贴 DeepSeek API key,只存 Cloudflare,不进仓库
+#   npx wrangler deploy
+# 部署后把 https://zmdld11-fortune.<你的子域>.workers.dev/api/fortune 填进博客仓库
+# src/content/settings/fortune.json 的 "api" 字段,重新构建博客即可点亮「AI 解读」按钮。

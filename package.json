@@ -1,0 +1,15 @@
+{
+  "name": "my-fortune",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "MyBlog 算命组件的 AI 解读转发服务(node 自托管 + Cloudflare Worker 双目标)",
+  "scripts": {
+    "build": "esbuild src/server.ts --bundle --platform=node --format=esm --outfile=dist/server.mjs --legal-comments=none",
+    "test": "npm run build && node test/test-server.mjs",
+    "deploy:worker": "cd worker && npx wrangler deploy"
+  },
+  "devDependencies": {
+    "esbuild": "^0.27.7"
+  }
+}

@@ -1,0 +1,20 @@
+[Unit]
+Description=Fortune AI Proxy (MyBlog 命理小馆)
+After=network.target
+
+[Service]
+Type=simple
+User=admin
+WorkingDirectory=/home/admin/My-Fortune
+ExecStart=/usr/bin/node /home/admin/My-Fortune/dist/server.mjs
+EnvironmentFile=/home/admin/My-Fortune/.env
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target

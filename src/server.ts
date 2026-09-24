@@ -139,7 +139,9 @@ const server = http.createServer(async (req, res) => {
         ],
         stream: true,
         temperature: 0.8,
-        max_tokens: 4096,
+        // 解读报告是长文(多模块 + 五节结构 + 免责声明),4K 会写到一半被上游截断;
+        // 8192 是 deepseek-chat 系列的安全上限(部分账号的 V4 模型支持更大,但没必要冒险)
+        max_tokens: 8192,
       }),
     });
 
@@ -164,6 +166,10 @@ const server = http.createServer(async (req, res) => {
           const j = JSON.parse(payload);
           const delta = j.choices?.[0]?.delta?.content;
           if (typeof delta === "string" && delta) send({ t: "chunk", v: delta });
+          // 上游因长度上限收尾 → 明确告诉前端,别让用户以为是自己网络断了
+          if (j.choices?.[0]?.finish_reason === "length") {
+            send({ t: "warn", v: "输出达到模型长度上限被截断:勾选的模块太多或问题太大时会出现。可减少模块、把问题拆小,或分几次问。" });
+          }
         } catch { /* 忽略不完整行 */ }
       }
     }

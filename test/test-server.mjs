@@ -96,6 +96,16 @@ try {
   ok("上游 model=deepseek-chat + stream", captured.model === "deepseek-chat" && captured.stream === true);
   ok("prompt 含系统规则+盘面", captured.messages[0].content.length > 500 && captured.messages[1].content.includes("西方占星本命盘"));
 
+  // 7b. 上游因长度上限截断 → 必须发 warn 事件(不静默)
+  r = await fetch(`${BASE}/api/fortune`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-forwarded-for": "9.9.9.9" },
+    body: JSON.stringify({ ...validPayload, question: "__TEST_LENGTH__ 触发截断" }),
+  });
+  const truncText = await r.text();
+  ok("上游 finish_reason=length 时发 warn 事件", truncText.includes('"t":"warn"') && truncText.includes("长度上限"), truncText.slice(-160));
+  ok("截断时仍以 [DONE] 正常收尾", truncText.trim().endsWith("data: [DONE]"));
+
   // 8. 限流: 此 IP 已用 3 次,再补 2 次后第 6 次 → 429
   for (let i = 0; i < 2; i++) await fetch(`${BASE}/api/fortune`, { method: "POST", body: JSON.stringify(validPayload), headers: { "content-type": "application/json" } });
   r = await fetch(`${BASE}/api/fortune`, { method: "POST", body: JSON.stringify(validPayload), headers: { "content-type": "application/json" } });

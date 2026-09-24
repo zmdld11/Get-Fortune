@@ -271,6 +271,8 @@ try {
   ok("引用渲染成 blockquote", ai.quote === 1, String(ai.quote));
   ok("正文里不残留 markdown 记号", ai.rawMarkers === false, ai.text.slice(0, 60));
   ok("完成后光标消失", ai.caretGone === true);
+  const warnBoxes = await page.$$eval("#f-ai-card .f-warn", (els) => els.length);
+  ok("正常完成不误报截断警告", warnBoxes === 0 && !ai.note.includes("截断"), `${warnBoxes} 个警告; ${ai.note}`);
   await shotEl(page, "#f-ai-card", "04-ai-done");
   const captured = JSON.parse(fs.readFileSync(path.join(ROOT, ".tmp/mock-capture.json"), "utf8"));
   const prompt = captured.body.messages[1].content;

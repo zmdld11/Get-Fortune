@@ -14,7 +14,10 @@ http.createServer((req, res) => {
   req.on("data", (c) => (body += c));
   req.on("end", () => {
     fs.mkdirSync(tmpDir, { recursive: true });
-    fs.writeFileSync(capturePath, JSON.stringify({ auth: req.headers.authorization, body: JSON.parse(body || "{}") }));
+    const parsed = JSON.parse(body || "{}");
+    fs.writeFileSync(capturePath, JSON.stringify({ auth: req.headers.authorization, body: parsed }));
+    // 请求里带 __TEST_LENGTH__ 时模拟上游因长度上限收尾,用于测 warn 事件
+    const truncated = JSON.stringify(parsed.messages ?? []).includes("__TEST_LENGTH__");
 
     res.writeHead(200, { "content-type": "text/event-stream" });
     // 按真实 DeepSeek 输出的形态分片(Markdown: 标题/粗体/列表/表格/引用)
@@ -33,6 +36,7 @@ http.createServer((req, res) => {
       if (i < chunks.length) {
         res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: chunks[i++] } }] })}\n\n`);
       } else {
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: truncated ? "length" : "stop" }] })}\n\n`);
         res.write("data: [DONE]\n\n");
         clearInterval(timer);
         res.end();

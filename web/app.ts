@@ -417,6 +417,7 @@ async function runAi(ids: string[], input: FortuneInput, sections: Record<string
 
   // 流式渲染: 累积原文,按帧节流做 Markdown → HTML
   let raw = "";
+  let warn = "";
   let raf = 0;
   const paint = () => {
     raf = 0;
@@ -456,12 +457,19 @@ async function runAi(ids: string[], input: FortuneInput, sections: Record<string
         try {
           const evt = JSON.parse(payload);
           if (evt.t === "chunk") push(evt.v);
+          if (evt.t === "warn") warn = evt.v;
           if (evt.t === "error") throw new Error(evt.v);
         } catch { /* 非 JSON 行忽略 */ }
       }
     }
-    card.querySelector(".f-ai-note")!.textContent = "（完成）";
+    card.querySelector(".f-ai-note")!.textContent = warn ? "（完成 · 被截断）" : "（完成）";
     box.innerHTML = renderMarkdown(raw);
+    if (warn) {
+      const p = document.createElement("p");
+      p.className = "f-warn";
+      p.textContent = `⚠ ${warn}`;
+      box.after(p);
+    }
     card.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (e) {
     if (raw) box.innerHTML = renderMarkdown(raw);   // 中断也要把已收到的渲染出来

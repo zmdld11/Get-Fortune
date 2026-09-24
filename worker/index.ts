@@ -128,7 +128,8 @@ export default {
         ],
         stream: true,
         temperature: 0.8,
-        max_tokens: 4096,
+        // 解读报告是长文,4K 会写到一半被上游截断;与 src/server.ts 保持一致
+        max_tokens: 8192,
       }),
     });
 
@@ -160,6 +161,10 @@ export default {
                 const json = JSON.parse(payload);
                 const delta = json.choices?.[0]?.delta?.content;
                 if (typeof delta === "string" && delta) controller.enqueue(encoder.encode(sse({ t: "chunk", v: delta })));
+                // 上游因长度上限收尾 → 明确告诉前端(与 src/server.ts 一致)
+                if (json.choices?.[0]?.finish_reason === "length") {
+                  controller.enqueue(encoder.encode(sse({ t: "warn", v: "输出达到模型长度上限被截断:勾选的模块太多或问题太大时会出现。可减少模块、把问题拆小,或分几次问。" })));
+                }
               } catch { /* 忽略不完整行 */ }
             }
           }

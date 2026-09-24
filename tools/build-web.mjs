@@ -31,6 +31,8 @@ for (const [file, meta] of Object.entries(result.metafile.outputs)) {
 fs.copyFileSync(path.join(root, "web", "index.html"), path.join(out, "index.html"));
 fs.copyFileSync(path.join(root, "web", "favicon.svg"), path.join(out, "favicon.svg"));
 fs.copyFileSync(path.join(root, "web", "data", "config.json"), path.join(out, "data", "config.json"));
+// 全国省—市坐标表(32KB,前端在需要出生地时懒加载)
+fs.copyFileSync(path.join(root, "web", "data", "cities-cn.json"), path.join(out, "data", "cities-cn.json"));
 // 康熙笔画表: 233KB,前端懒加载(首次用「姓名五格」才下载),不内联进 app.js
 fs.copyFileSync(path.join(root, "src", "paipan", "data", "kangxi.json"), path.join(out, "data", "kangxi.json"));
 console.log("  web/dist/index.html + data/{config,kangxi}.json");

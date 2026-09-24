@@ -9,12 +9,16 @@ import { inDstWindow } from "../src/paipan/bazi";
 import { tossCoins } from "../src/paipan/divination";
 import "./style.css";
 
-interface Cfg { api: string; cities: { name: string; lon: number; lat: number }[] }
+interface Cfg { api: string; cities?: { name: string; lon: number; lat: number }[] }
+interface City { name: string; lon: number; lat: number }
+interface Province { name: string; lon: number; lat: number; cities: City[] }
+interface CitiesDoc { source: string; provinces: Province[] }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const TOSS_LABEL: Record<number, string> = { 6: "老阴 ×", 7: "少阳 ▀", 8: "少阴 ▀▀", 9: "老阳 ○" };
 
-let cfg: Cfg = { api: "", cities: [] };
+let cfg: Cfg = { api: "" };
+let citiesDoc: CitiesDoc | null = null;
 let tosses: number[] = [];
 
 // ---------------- 模块勾选区渲染 ----------------
@@ -145,6 +149,7 @@ const checkedIds = () =>
 
 function refreshForm() {
   const req = requiresOf(checkedIds());
+  const ids = checkedIds();
   const any = req.size > 0;
   // 选中态高亮(不依赖 :has(),老浏览器同样有反馈)
   document.querySelectorAll<HTMLElement>("#f-cats .f-chip").forEach((chip) => {
@@ -153,27 +158,81 @@ function refreshForm() {
   $("fs-birth").hidden = !req.has("birth") && !req.has("time");
   $("fs-partner").hidden = !req.has("partner");
   $("fs-period").hidden = !req.has("period");
-  $("fs-question").hidden = !req.has("question");
+  // 提问框: 只要选了模块就给——不问具体事也能让 AI 结合盘面聊
+  $("fs-ask").hidden = !any;
+  $("fs-divination").hidden = !(ids.includes("liuyao") || ids.includes("tarot"));
   $("fs-name").hidden = !req.has("name");
   $("fs-zeday").hidden = !req.has("zeday");
-  $("f-toss-box").hidden = !checkedIds().includes("liuyao");
-  $("f-spread-box").hidden = !checkedIds().includes("tarot");
+  $("f-toss-box").hidden = !ids.includes("liuyao");
+  $("f-spread-box").hidden = !ids.includes("tarot");
   ($("f-run") as HTMLButtonElement).disabled = !any;
-  $("f-hint").textContent = any ? "出生时间越准，排盘越准；不确定就勾掉「知道出生时间」" : "先勾选至少一个模块";
+
+  // 需要出生信息时才懒加载省市表(32KB)
+  if (!$("fs-birth").hidden || !$("fs-partner").hidden) void ensureCities();
+
+  const askMods = MODULES.filter((m) => ids.includes(m.id) && m.cat === "ask");
+  const noQuestion = ($("f-question") as HTMLTextAreaElement).value.trim() === "";
+  if (!any) $("f-hint").textContent = "先勾选至少一个模块";
+  else if (askMods.length && noQuestion) $("f-hint").textContent = `「${askMods[0].name}」是问事占卜，建议在“想问点什么”里写上你要问的事（不写会按当前时间起卦）`;
+  else $("f-hint").textContent = "出生时间越准，排盘越准；不确定就勾掉「知道出生时间」";
+}
+
+// ---------------- 出生地: 省 → 市 级联(全国省市表懒加载) ----------------
+
+/** 首次需要时加载省市表,并给本人/对方两处下拉都建好级联 */
+async function ensureCities() {
+  if (citiesDoc) return;
+  try {
+    citiesDoc = (await (await fetch("data/cities-cn.json")).json()) as CitiesDoc;
+  } catch {
+    citiesDoc = { source: "fallback", provinces: [{ name: "上海市", lon: 121.47, lat: 31.23, cities: [{ name: "上海市", lon: 121.47, lat: 31.23 }] }] };
+  }
+  for (const [provId, cityId] of [["f-prov", "f-city"], ["p-prov", "p-city"]] as const) {
+    const provSel = $(provId) as HTMLSelectElement;
+    provSel.textContent = "";
+    for (const p of citiesDoc.provinces) provSel.append(new Option(p.name, p.name));
+    provSel.addEventListener("change", () => fillCities(provId, cityId));
+    const sh = citiesDoc.provinces.find((p) => p.name === "上海市") ?? citiesDoc.provinces[0];
+    provSel.value = sh.name;
+    fillCities(provId, cityId);
+  }
+}
+
+function fillCities(provId: string, cityId: string) {
+  const provName = ($(provId) as HTMLSelectElement).value;
+  const citySel = $(cityId) as HTMLSelectElement;
+  citySel.textContent = "";
+  const prov = citiesDoc?.provinces.find((p) => p.name === provName);
+  for (const c of prov?.cities ?? []) {
+    const o = new Option(c.name, c.name);
+    o.dataset.lon = String(c.lon);
+    o.dataset.lat = String(c.lat);
+    citySel.append(o);
+  }
+}
+
+/** 出生地文本(写进盘面口径,让 AI 与用户都能核对) */
+function cityLabel(prefix: "f" | "p"): string {
+  const isMain = prefix === "f";
+  if (isMain && ($("f-geo-manual") as HTMLInputElement).checked) return "自定义坐标";
+  const prov = ($(isMain ? "f-prov" : "p-prov") as HTMLSelectElement).selectedOptions[0]?.textContent ?? "";
+  const city = ($(isMain ? "f-city" : "p-city") as HTMLSelectElement).selectedOptions[0]?.textContent ?? "";
+  if (!city || city === prov) return prov || city;
+  return `${prov} ${city}`;
 }
 
 // ---------------- 出生信息采集 ----------------
 
-function geoOf(citySel: string): { lonE: number; latN: number; tz: number } {
-  const sel = $(citySel) as HTMLSelectElement;
-  const opt = sel.selectedOptions[0];
-  if (opt?.value === "__custom") {
+function geoOf(prefix: "f" | "p"): { lonE: number; latN: number; tz: number } {
+  const isMain = prefix === "f";
+  if (isMain && ($("f-geo-manual") as HTMLInputElement).checked) {
     return {
       lonE: Number(($("f-lon") as HTMLInputElement).value || 121.47),
       latN: Number(($("f-lat") as HTMLInputElement).value || 31.23),
       tz: Number(($("f-tz") as HTMLInputElement).value || 8),
     };
   }
+  const opt = ($(isMain ? "f-city" : "p-city") as HTMLSelectElement).selectedOptions[0];
   return { lonE: Number(opt?.dataset.lon ?? 121.47), latN: Number(opt?.dataset.lat ?? 31.23), tz: 8 };
 }
 
@@ -185,11 +244,10 @@ function birthFrom(prefix: "f" | "p"): BirthInput {
   const timeKnown = isMain ? ($("f-time-known") as HTMLInputElement).checked : true;
   const timeVal = isMain ? ($("f-time") as HTMLInputElement).value : ($("p-time") as HTMLInputElement).value;
   const [hh, mm] = timeVal ? timeVal.split(":").map(Number) : [12, 0];
-  const geo = geoOf(isMain ? "f-city" : "p-city");
+  const geo = geoOf(isMain ? "f" : "p");
   const gender = isMain
     ? (document.querySelector<HTMLInputElement>(`input[name="f-gender"]:checked`)?.value ?? "unknown")
     : (document.querySelector<HTMLInputElement>(`input[name="p-gender"]:checked`)?.value ?? "female");
-  const citySel = $(isMain ? "f-city" : "p-city") as HTMLSelectElement;
   const isLunar = isMain && cal === "lunar";
   const timeSource = isMain ? ($("f-time-source") as HTMLSelectElement).value : undefined;
   return {
@@ -201,7 +259,7 @@ function birthFrom(prefix: "f" | "p"): BirthInput {
     timeKnown, hour: hh, minute: mm,
     dst: isMain ? ($("f-dst") as HTMLInputElement).checked : ($("p-dst") as HTMLInputElement).checked,
     lonE: geo.lonE, latN: geo.latN, tz: geo.tz,
-    city: citySel.value === "__custom" ? "自定义坐标" : citySel.value,
+    city: cityLabel(isMain ? "f" : "p"),
     gender: gender as BirthInput["gender"],
     timeSource: timeKnown ? timeSource : undefined,
   };
@@ -228,7 +286,9 @@ function gatherInput(): FortuneInput {
   const input: FortuneInput = { nowMs: Date.now() };
   if (req.has("birth") || req.has("time")) input.birth = birthFrom("f");
   if (req.has("partner")) input.partner = birthFrom("p");
-  if (req.has("question")) input.question = ($("f-question") as HTMLTextAreaElement).value.trim();
+  // 提问框对任何模块都开放(不限于问事类),空着就不发
+  const q = ($("f-question") as HTMLTextAreaElement).value.trim();
+  if (q) input.question = q;
   if (req.has("period") && ($("f-period-from") as HTMLInputElement).value) {
     input.period = {
       from: ($("f-period-from") as HTMLInputElement).value,
@@ -404,16 +464,6 @@ function fillSelects() {
   const day = $("f-lunar-day") as HTMLSelectElement;
   for (let i = 1; i <= 12; i++) month.append(new Option(`${i} 月`, String(i)));
   for (let i = 1; i <= 30; i++) day.append(new Option(`${i} 日`, String(i)));
-  for (const sel of ["f-city", "p-city"]) {
-    const s = $(sel) as HTMLSelectElement;
-    for (const c of cfg.cities) {
-      const o = new Option(c.name, c.name);
-      o.dataset.lon = String(c.lon);
-      o.dataset.lat = String(c.lat);
-      s.append(o);
-    }
-    if (sel === "f-city") s.append(new Option("自定义经纬度…", "__custom"));
-  }
 }
 
 function wireEvents() {
@@ -425,8 +475,12 @@ function wireEvents() {
     $("f-dates-lunar").hidden = !lunar;
   });
   ($("f-date") as HTMLInputElement).addEventListener("change", syncDst);
-  ($("f-city") as HTMLSelectElement).addEventListener("change", (e) => {
-    $("f-custom-geo").hidden = (e.target as HTMLSelectElement).value !== "__custom";
+  ($("f-question") as HTMLTextAreaElement).addEventListener("input", refreshForm);
+  ($("f-geo-manual") as HTMLInputElement).addEventListener("change", (e) => {
+    const on = (e.target as HTMLInputElement).checked;
+    $("f-geo-row").hidden = !on;
+    ($("f-prov") as HTMLSelectElement).disabled = on;
+    ($("f-city") as HTMLSelectElement).disabled = on;
   });
 
   ($("f-toss-btn") as HTMLButtonElement).addEventListener("click", () => {
@@ -456,7 +510,7 @@ async function main() {
   try {
     cfg = await (await fetch("data/config.json", { cache: "no-cache" })).json() as Cfg;
   } catch {
-    cfg = { api: "", cities: [{ name: "上海", lon: 121.47, lat: 31.23 }] };
+    cfg = { api: "" };
   }
   fillSelects();
   wireEvents();

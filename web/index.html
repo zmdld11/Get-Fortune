@@ -72,13 +72,18 @@
         </div>
         <div class="f-row">
           <label class="f-inline">出生地
+            <select id="f-prov"></select>
             <select id="f-city"></select>
           </label>
-          <span id="f-custom-geo" hidden>
+          <label class="f-inline"><input type="checkbox" id="f-geo-manual" /> 手动填经纬度</label>
+        </div>
+        <div class="f-row" id="f-geo-row" hidden>
+          <span id="f-custom-geo">
             <input type="number" id="f-lon" step="0.01" min="-180" max="180" placeholder="东经 121.47" />
             <input type="number" id="f-lat" step="0.01" min="-90" max="90" placeholder="北纬 31.23" />
             <input type="number" id="f-tz" step="0.5" min="-12" max="14" value="8" placeholder="时区 ±h" />
           </span>
+          <span class="f-dim">海外出生或知道精确坐标时用这里（东经/北纬为正）</span>
         </div>
         <div class="f-row">
           <label class="f-inline"><input type="radio" name="f-gender" value="male" checked /> 男</label>
@@ -106,8 +111,11 @@
         </div>
         <div class="f-row">
           <label class="f-inline">出生地
+            <select id="p-prov"></select>
             <select id="p-city"></select>
           </label>
+        </div>
+        <div class="f-row">
           <label class="f-inline"><input type="radio" name="p-gender" value="male" /> 男</label>
           <label class="f-inline"><input type="radio" name="p-gender" value="female" checked /> 女</label>
         </div>
@@ -120,9 +128,14 @@
         <input type="date" id="f-period-to" />
       </fieldset>
 
-      <fieldset class="f-fieldset" id="fs-question" hidden>
-        <legend>你想问什么？（占卜/解读都靠它）</legend>
-        <textarea id="f-question" rows="2" maxlength="200" placeholder="例：最近该不该换工作？和 TA 适不适合走下去？"></textarea>
+      <fieldset class="f-fieldset" id="fs-ask" hidden>
+        <legend>想问点什么？（可选 · 任何模块都能配合回答）</legend>
+        <textarea id="f-question" rows="2" maxlength="300" placeholder="例如：我这辈子结过婚吗？／10–20 岁之间谈过恋爱吗？／今年该不该换工作？"></textarea>
+        <p class="f-tiny">想问得越具体，解读越有的放矢。<b>是否类、时间类问题</b>（有没有 / 结过婚吗 / 几岁）命理系统只能给传统口径的倾向判断，不是事实陈述——别当成查档案。</p>
+      </fieldset>
+
+      <fieldset class="f-fieldset" id="fs-divination" hidden>
+        <legend>占卜方式（按所选模块）</legend>
         <div class="f-row" id="f-toss-box" hidden>
           <button type="button" class="btn btn-ghost" id="f-toss-btn">🪙 摇一摇（六爻，摇 6 次）</button>
           <button type="button" class="btn btn-ghost" id="f-toss-reset" hidden>重新摇</button>

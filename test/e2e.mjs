@@ -74,7 +74,7 @@ try {
   });
   ok("app.js 可访问", allHaveDesc);
   const cityOpts = await page.$$eval("#f-city option", (els) => els.length);
-  ok("城市下拉 26+1", cityOpts === 27, String(cityOpts));
+  ok("未出生地前下拉为空(懒加载省市表)", cityOpts === 0, String(cityOpts));
   await shot("01-home");
 
   // ---------- 2. 浮窗: hover ----------
@@ -125,7 +125,8 @@ try {
   });
   const formState1 = await page.evaluate(() => ({
     birth: document.getElementById("fs-birth").hidden,
-    question: document.getElementById("fs-question").hidden,
+    ask: document.getElementById("fs-ask").hidden,
+    divination: document.getElementById("fs-divination").hidden,
     spread: document.getElementById("f-spread-box").hidden,
     toss: document.getElementById("f-toss-box").hidden,
     on: document.querySelectorAll("#f-cats .f-chip.is-on").length,
@@ -134,12 +135,68 @@ try {
     tossVisible: getComputedStyle(document.getElementById("f-toss-box")).display !== "none",
   }));
   ok("勾选后出现出生信息区", formState1.birth === false);
-  ok("出现问题区", formState1.question === false);
+  ok("提问框对任何模块都出现", formState1.ask === false);
   ok("塔罗牌阵选择出现", formState1.spread === false);
   ok("未选六爻则不显示摇钱", formState1.toss === true);
   ok("未选六爻时摇钱区真的不可见", formState1.tossVisible === false);
   ok("阳历模式下农历输入行不可见", formState1.lunarRowVisible === false);
   ok("选中态高亮 3 个", formState1.on === 3, String(formState1.on));
+
+  // 只有八字时:提问框仍在(用户要的"任意模块都能问"),占卜方式区不该出现
+  await page.evaluate(() => {
+    for (const id of ["western", "tarot"]) {
+      const i = document.querySelector(`#f-cats .f-chip[data-id='${id}'] input`);
+      i.checked = false; i.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  });
+  const onlyBazi = await page.evaluate(() => ({
+    ask: document.getElementById("fs-ask").hidden,
+    div: document.getElementById("fs-divination").hidden,
+  }));
+  ok("只选八字时提问框仍可用", onlyBazi.ask === false);
+  ok("无占卜模块时不显示占卜方式区", onlyBazi.div === true);
+  await page.evaluate(() => {
+    for (const id of ["western", "tarot"]) {
+      const i = document.querySelector(`#f-cats .f-chip[data-id='${id}'] input`);
+      i.checked = true; i.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  });
+
+  // 出生地级联:全国省市表懒加载完成
+  await page.waitForFunction(() => document.querySelectorAll("#f-prov option").length > 30, { timeout: 10000 });
+  const cascade = await page.evaluate(() => ({
+    provs: document.querySelectorAll("#f-prov option").length,
+    city0: document.querySelector("#f-city option")?.textContent,
+    pProvs: document.querySelectorAll("#p-prov option").length,
+  }));
+  ok("省级下拉 34 个(懒加载完成)", cascade.provs === 34, String(cascade.provs));
+  ok("默认落上海市", cascade.city0 === "上海市", String(cascade.city0));
+  ok("对方出生地同样有省级", cascade.pProvs === 34, String(cascade.pProvs));
+
+  // 选广东 → 市级联动出 21 个
+  await page.select("#f-prov", "广东省");
+  const gd = await page.evaluate(() => ({
+    n: document.querySelectorAll("#f-city option").length,
+    first: document.querySelector("#f-city option")?.textContent,
+  }));
+  ok("广东省下辖 21 市", gd.n === 21, `${gd.n} 个; 首个=${gd.first}`);
+  await page.select("#f-prov", "新疆维吾尔自治区");
+  const xj = await page.evaluate(() => {
+    const opts = [...document.querySelectorAll("#f-city option")];
+    const kashi = opts.find((o) => o.textContent.includes("喀什"));
+    return { n: opts.length, kashi: kashi?.dataset.lon + "," + kashi?.dataset.lat };
+  });
+  ok("新疆 24 个地州市且喀什坐标正确", xj.n === 24 && xj.kashi?.startsWith("75.9"), JSON.stringify(xj));
+
+  // 手动经纬度:勾选后出现输入行且省市被禁用
+  await page.click("#f-geo-manual");
+  const manual = await page.evaluate(() => ({
+    row: getComputedStyle(document.getElementById("f-geo-row")).display !== "none",
+    disabled: document.getElementById("f-prov").disabled && document.getElementById("f-city").disabled,
+  }));
+  ok("勾选手动经纬度后出现输入行且省市禁用", manual.row === true && manual.disabled === true, JSON.stringify(manual));
+  await page.click("#f-geo-manual");
+  await page.select("#f-prov", "上海市");
 
   // 切到农历 → 农历行出现(反向验证)
   await page.select("#f-cal", "lunar");
@@ -149,13 +206,22 @@ try {
   }));
   ok("切农历后农历行出现/阳历行隐藏", lunarShown.lunar === true && lunarShown.solar === true, JSON.stringify(lunarShown));
   await page.select("#f-cal", "solar");
+  await page.evaluate(() => {
+    document.querySelector("#f-date").value = "1990-06-15";
+    document.querySelector("#f-date").dispatchEvent(new Event("change"));
+    document.querySelector("#f-time").value = "11:30";
+    const q = document.querySelector("#f-question");
+    q.value = "我这辈子结过婚吗？10–20 岁之间谈过恋爱吗？";
+    q.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await shotEl(page, "#f-form", "03b-form");
 
   // ---------- 5. 本地排盘 ----------
   await page.evaluate(() => {
     document.querySelector("#f-date").value = "1990-06-15";
     document.querySelector("#f-date").dispatchEvent(new Event("change"));
     document.querySelector("#f-time").value = "11:30";
-    document.querySelector("#f-question").value = "最近的职业方向该怎么选？";
+    document.querySelector("#f-question").value = "我这辈子结过婚吗？10–20 岁之间谈过恋爱吗？";
     document.getElementById("f-run").click();
   });
   await page.waitForFunction(() => document.getElementById("f-result").innerText.length > 150, { timeout: 20000 });
@@ -191,7 +257,10 @@ try {
   const prompt = captured.body.messages[1].content;
   ok("上游 prompt 含三个模块盘面", ["八字四柱", "西方占星本命盘", "塔罗"].every((n) => prompt.includes(n)), prompt.slice(0, 80));
   ok("上游 prompt 含实际盘面数据", prompt.includes("庚午") && prompt.includes("辛亥"));
+  ok("上游 prompt 含出生地(上海市)", prompt.includes("上海市"), prompt.slice(0, 60));
+  ok("上游 prompt 带上用户的原问题", prompt.includes("结过婚"), prompt.slice(0, 60));
   ok("上游 prompt 挂系统规则", captured.body.messages[0].content.length > 500);
+  ok("系统规则含事实类问题纪律", captured.body.messages[0].content.includes("具体事实类问题"), captured.body.messages[0].content.slice(0, 40));
 
   // ---------- 7. 移动端(触屏): ⓘ 点按浮窗且不误勾选 ----------
   const mp = await browser.newPage();

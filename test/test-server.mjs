@@ -43,7 +43,13 @@ try {
   ok("GET /app.css 200 text/css", r.status === 200 && (r.headers.get("content-type") ?? "").includes("css"));
   r = await fetch(`${BASE}/data/config.json`);
   const cfgJson = await r.json();
-  ok("GET /data/config.json 含 26 城 + api", r.status === 200 && cfgJson.cities.length === 26 && cfgJson.api === "/api/fortune");
+  ok("GET /data/config.json 含 api", r.status === 200 && cfgJson.api === "/api/fortune");
+  r = await fetch(`${BASE}/data/cities-cn.json`);
+  const citiesDoc = await r.json();
+  const cityCount = citiesDoc.provinces.reduce((s, p) => s + p.cities.length, 0);
+  ok("省市级联表 34 省 / 300+ 市", r.status === 200 && citiesDoc.provinces.length === 34 && cityCount > 300, `${citiesDoc.provinces.length} 省 ${cityCount} 市`);
+  const sh = citiesDoc.provinces.find((p) => p.name.includes("上海"))?.cities?.[0];
+  ok("抽查上海市坐标", Math.abs(sh.lon - 121.47) < 0.2 && Math.abs(sh.lat - 31.23) < 0.2, JSON.stringify(sh));
   r = await fetch(`${BASE}/data/kangxi.json`);
   const kx = await r.json();
   ok("康熙表可访问且覆盖 2 万字+", r.status === 200 && Object.keys(kx).length > 20000, `实际 ${Object.keys(kx).length}`);

@@ -48,8 +48,17 @@ try {
     document.querySelector("#f-date").value = "1990-06-15";
     document.querySelector("#f-date").dispatchEvent(new Event("change"));
     document.querySelector("#f-time").value = "11:30";
+    document.getElementById("f-question").value = "我这几年的职业方向该怎么选？";
     document.getElementById("f-run").click();
   });
+  await page.waitForFunction(() => document.querySelectorAll("#f-prov option").length > 30, { timeout: 15000 });
+  const form = await page.evaluate(() => ({
+    provs: document.querySelectorAll("#f-prov option").length,
+    cities: document.querySelectorAll("#f-city option").length,
+    askVisible: !document.getElementById("fs-ask").hidden,
+  }));
+  ok("线上省市表 34 省 + 默认市已填", form.provs === 34 && form.cities >= 1, JSON.stringify(form));
+  ok("线上提问框对普通模块也显示", form.askVisible === true);
   await page.waitForFunction(() => document.getElementById("f-result").innerText.length > 150, { timeout: 20000 });
   const chart = await page.evaluate(() => document.getElementById("f-result").innerText);
   ok("线上本地排盘正常(四柱庚午/壬午/辛亥)", ["庚午", "壬午", "辛亥"].every((p) => chart.includes(p)));

@@ -10,12 +10,13 @@
     "build:server": "esbuild src/server.ts --bundle --platform=node --format=esm --outfile=dist/server.mjs --legal-comments=none",
     "start": "node dist/server.mjs",
     "dev": "npm run build && node dist/server.mjs",
-    "test": "npm run build && npm run test:paipan && node test/test-server.mjs",
+    "test": "npm run build && npm run test:md && npm run test:paipan && node test/test-server.mjs",
     "test:paipan": "tsx src/paipan/selftest.ts",
     "test:e2e": "npm run build && node test/e2e.mjs",
     "test:prod": "node test/prod-smoke.mjs",
     "deploy:worker": "cd worker && npx wrangler deploy",
-    "gen:cities": "node tools/gen-cities.mjs"
+    "gen:cities": "node tools/gen-cities.mjs",
+    "test:md": "tsx test/md.test.ts"
   },
   "devDependencies": {
     "esbuild": "^0.27.7",

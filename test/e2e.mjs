@@ -246,12 +246,31 @@ try {
     const n = document.querySelector("#f-ai-card .f-ai-note");
     return n && (n.textContent.includes("完成") || n.textContent.includes("失败"));
   }, { timeout: 30000, polling: 300 });
-  const ai = await page.evaluate(() => ({
-    note: document.querySelector("#f-ai-card .f-ai-note").textContent,
-    text: document.getElementById("f-ai-text").innerText,
-  }));
+  const ai = await page.evaluate(() => {
+    const box = document.getElementById("f-ai-text");
+    return {
+      note: document.querySelector("#f-ai-card .f-ai-note").textContent,
+      text: box.innerText,
+      html: box.innerHTML,
+      h1: box.querySelectorAll("h1").length,
+      h2: box.querySelectorAll("h2").length,
+      strong: box.querySelectorAll("strong").length,
+      li: box.querySelectorAll("li").length,
+      td: [...box.querySelectorAll("td")].map((x) => x.textContent).join(","),
+      quote: box.querySelectorAll("blockquote").length,
+      rawMarkers: /(^|\n)#{1,6}\s|\*\*/.test(box.innerText),
+      caretGone: box.querySelectorAll(".md-caret").length === 0,
+    };
+  });
   ok("AI 流式完成", ai.note.includes("完成"), ai.note);
   ok("AI 正文渲染", ai.text.includes("mock 流式回复"), ai.text.slice(0, 60));
+  ok("Markdown 标题渲染成 h1/h2", ai.h1 === 1 && ai.h2 === 1, `h1=${ai.h1} h2=${ai.h2}`);
+  ok("粗体渲染成 strong", ai.strong >= 1, String(ai.strong));
+  ok("列表渲染成 li ×2", ai.li === 2, String(ai.li));
+  ok("表格渲染成 td(日柱/辛亥)", ai.td.includes("辛亥") && ai.td.includes("日柱"), ai.td);
+  ok("引用渲染成 blockquote", ai.quote === 1, String(ai.quote));
+  ok("正文里不残留 markdown 记号", ai.rawMarkers === false, ai.text.slice(0, 60));
+  ok("完成后光标消失", ai.caretGone === true);
   await shotEl(page, "#f-ai-card", "04-ai-done");
   const captured = JSON.parse(fs.readFileSync(path.join(ROOT, ".tmp/mock-capture.json"), "utf8"));
   const prompt = captured.body.messages[1].content;

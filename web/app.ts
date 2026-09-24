@@ -7,6 +7,7 @@ import {
 } from "../src/paipan/index";
 import { inDstWindow } from "../src/paipan/bazi";
 import { tossCoins } from "../src/paipan/divination";
+import { renderMarkdown } from "./md";
 import "./style.css";
 
 interface Cfg { api: string; cities?: { name: string; lon: number; lat: number }[] }
@@ -413,6 +414,19 @@ async function runAi(ids: string[], input: FortuneInput, sections: Record<string
   box.textContent = "";
   card.hidden = false;
   card.querySelector(".f-ai-note")!.textContent = "（流式生成中…）";
+
+  // 流式渲染: 累积原文,按帧节流做 Markdown → HTML
+  let raw = "";
+  let raf = 0;
+  const paint = () => {
+    raf = 0;
+    box.innerHTML = renderMarkdown(raw) + (card.querySelector(".f-ai-note")!.textContent!.includes("生成中") ? '<span class="md-caret"></span>' : "");
+  };
+  const push = (v: string) => {
+    raw += v;
+    if (!raf) raf = requestAnimationFrame(paint);
+  };
+
   try {
     const resp = await fetch(cfg.api, {
       method: "POST",
@@ -441,14 +455,16 @@ async function runAi(ids: string[], input: FortuneInput, sections: Record<string
         if (payload === "[DONE]") break outer;
         try {
           const evt = JSON.parse(payload);
-          if (evt.t === "chunk") box.textContent += evt.v;
+          if (evt.t === "chunk") push(evt.v);
           if (evt.t === "error") throw new Error(evt.v);
         } catch { /* 非 JSON 行忽略 */ }
       }
     }
     card.querySelector(".f-ai-note")!.textContent = "（完成）";
+    box.innerHTML = renderMarkdown(raw);
     card.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (e) {
+    if (raw) box.innerHTML = renderMarkdown(raw);   // 中断也要把已收到的渲染出来
     card.querySelector(".f-ai-note")!.textContent = "（失败）";
     const p = document.createElement("p");
     p.className = "f-warn";

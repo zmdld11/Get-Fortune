@@ -69,13 +69,23 @@ try {
     const n = document.querySelector("#f-ai-card .f-ai-note");
     return n && (n.textContent.includes("完成") || n.textContent.includes("失败"));
   }, { timeout: 240000, polling: 1000 });
-  const ai = await page.evaluate(() => ({
-    note: document.querySelector("#f-ai-card .f-ai-note").textContent,
-    len: document.getElementById("f-ai-text").innerText.length,
-    head: document.getElementById("f-ai-text").innerText.slice(0, 100),
-  }));
+  const ai = await page.evaluate(() => {
+    const box = document.getElementById("f-ai-text");
+    return {
+      note: document.querySelector("#f-ai-card .f-ai-note").textContent,
+      len: box.innerText.length,
+      head: box.innerText.slice(0, 100),
+      h: box.querySelectorAll("h1,h2,h3,h4").length,
+      strong: box.querySelectorAll("strong").length,
+      li: box.querySelectorAll("li").length,
+      rawMarkers: /(^|\n)#{1,6}\s/.test(box.innerText) || box.innerText.includes("**"),
+    };
+  });
   ok("线上 AI 解读完成", ai.note.includes("完成"), ai.note);
   ok("解读正文长度正常(>500 字)", ai.len > 500, `${ai.len} 字`);
+  ok("线上 Markdown 渲染成标题", ai.h >= 2, `h=${ai.h}`);
+  ok("线上正文无残留 markdown 记号", ai.rawMarkers === false, ai.head.slice(0, 80));
+  console.log(`     标题${ai.h} 个 / 粗体${ai.strong} / 列表项${ai.li} / 正文 ${ai.len} 字`);
   console.log("     正文开头: " + ai.head.replace(/\n/g, " ").slice(0, 80));
 
   await page.evaluate(() => document.getElementById("f-ai-card").scrollIntoView({ block: "start" }));

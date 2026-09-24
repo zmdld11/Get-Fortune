@@ -13,6 +13,7 @@
     "test": "npm run build && npm run test:paipan && node test/test-server.mjs",
     "test:paipan": "tsx src/paipan/selftest.ts",
     "test:e2e": "npm run build && node test/e2e.mjs",
+    "test:prod": "node test/prod-smoke.mjs",
     "deploy:worker": "cd worker && npx wrangler deploy"
   },
   "devDependencies": {

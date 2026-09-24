@@ -4,3 +4,4 @@ dist/
 web/dist/
 .tmp/
 .shots/
+deploy/server.env
